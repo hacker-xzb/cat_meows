@@ -241,7 +241,7 @@ for batch_idx, (features, labels) in enumerate(dataloader):
     # 处理每个批次的 features 和 labels
     print(f"Batch {batch_idx} - Features shape: {features.shape}, Labels shape: {labels.shape}")
 
-# def test_dataset():
+# def test_dataset():    
 #     dataset = CatSoundDataset('./dataset')  # 使用您的数据集路径
 #     for i in range(min(5, len(dataset))):  # 测试前5个样本或所有样本（如果少于5个）
 #         print(f"\nTesting sample {i}")

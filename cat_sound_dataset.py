@@ -57,12 +57,11 @@ def bandpass_filter(waveform, sample_rate, low_freq, high_freq):
     """
     # 确保 waveform 是一维的 NumPy 数组
     if isinstance(waveform, torch.Tensor):
-        waveform = waveform.squeeze().cpu().numpy()  # 转为 NumPy 数组
+        waveform = waveform.squeeze().cpu().numpy().copy()  # 转为 NumPy 数组并创建副本
     elif isinstance(waveform, np.ndarray):
-        waveform = waveform.squeeze()  # 删除多余的维度
+        waveform = waveform.squeeze().copy()  # 删除多余的维度并创建副本
     else:
         raise TypeError("Unsupported waveform type. Expected torch.Tensor or numpy.ndarray")
-    
     # 计算滤波器参数
     nyquist = sample_rate / 2.0
     low = low_freq / nyquist
@@ -75,7 +74,7 @@ def bandpass_filter(waveform, sample_rate, low_freq, high_freq):
     filtered_waveform = filtfilt(b, a, waveform)
     
     # 转换回 torch 张量，确保没有负步长
-    filtered_waveform = torch.tensor(filtered_waveform, dtype=torch.float32)
+    filtered_waveform = torch.tensor(filtered_waveform.copy(), dtype=torch.float32)
     
     return filtered_waveform.unsqueeze(0)  # 返回 [1, time_steps] 形状
 
@@ -122,17 +121,14 @@ def get_modulation_features(waveform, sample_rate):
     magnitude = stft_result.abs()
 
     # 计算包络
-    # 使用包络检测来捕捉信号的幅度变化（可以选择高通滤波器进行平滑）
-    # 例如，进行低通滤波来平滑幅度谱
-    lowpass_filter = bandpass_filter(magnitude, sample_rate=sample_rate, low_freq=300, high_freq=1000)
-    envelope = lowpass_filter(lowpass_filter)
-
-    # 提取时域调制特征：例如，信号包络的时间变化
-    # 可以通过计算包络的变化（例如差分）来捕捉动态特征
-    modulation_features = envelope.diff(dim=-1)  # 计算时间维度上的差分，捕捉变化
+    # 使用带通滤波器进行包络检测来捕捉信号的幅度变化
+    lowpass_filtered = bandpass_filter(magnitude, sample_rate=sample_rate, low_freq=300, high_freq=1000)
+    
+    # 计算包络的时间变化（差分）
+    envelope = lowpass_filtered.diff(dim=-1)  # 计算时间维度上的差分，捕捉变化
     
     # 确保输出的特征维度为 (1, num_features, time_steps)
-    modulation_features = modulation_features.unsqueeze(0)  # 增加 batch 维度
+    modulation_features = envelope.unsqueeze(0)  # 增加 batch 维度
     modulation_features = modulation_features.unsqueeze(0)  # 增加通道维度
     
     return modulation_features
@@ -162,7 +158,7 @@ class CatSoundDataset(Dataset):
         waveform, sample_rate = librosa.load(audio_path, sr=None)
         
         # 将其转为Torch张量
-        waveform = torch.tensor(waveform, dtype=torch.float32)
+        waveform = torch.tensor(waveform.copy(), dtype=torch.float32)
         
         # 对音频进行采样重采样
         waveform = Resample(orig_freq=sample_rate, new_freq=8000)(waveform)
@@ -173,24 +169,29 @@ class CatSoundDataset(Dataset):
         # 提取时间调制特征（如果需要）
         modulation_features = get_modulation_features(waveform, 8000)
         
-        # 确保 modulation_features 的维度与 mfcc_features 匹配
-        if modulation_features.dim() == 1:
-            modulation_features = modulation_features.unsqueeze(0).unsqueeze(0)
-        elif modulation_features.dim() == 2:
-            modulation_features = modulation_features.unsqueeze(1)
+        # # 打印特征的形状以进行调试
+        # print(f"MFCC shape: {mfcc_features.shape}")
+        # print(f"Modulation features shape: {modulation_features.shape}")
         
+        # 调整 modulation_features 的维度
+        modulation_features = modulation_features.squeeze()  # 移除所有大小为1的维度
+        if modulation_features.dim() == 2:
+            modulation_features = modulation_features.unsqueeze(0)  # 添加通道维度
+        #print(f"Modulation2 features shape: {modulation_features.shape}")
+
         # 确保两个特征的时间维度匹配
         if mfcc_features.shape[2] != modulation_features.shape[2]:
-            # 选择较短的长度
             min_length = min(mfcc_features.shape[2], modulation_features.shape[2])
             mfcc_features = mfcc_features[:, :, :min_length]
             modulation_features = modulation_features[:, :, :min_length]
-        
-        # 合并特征（MFCC + 时间调制特征）
+
+        # 合并特征
         features = torch.cat([mfcc_features, modulation_features], dim=1)
+        # print(f"features: {features.shape}")
 
         # 获取标签
         label = self.get_label(self.files[idx])
+        # print(f"label: {label}")
         
         return features, label
 
@@ -201,18 +202,44 @@ class CatSoundDataset(Dataset):
         """
         label_name = filename.split('_')[0]  # 获取文件名前缀（B, F, I）
         return LABELS[label_name]  # 返回对应的标签
+    
+def custom_collate_fn(batch):
+    features, labels = zip(*batch)
+    
+    # 找到时间维度的最大长度
+    max_length = max([f.shape[2] for f in features])
+
+    # 填充每个特征到最大长度
+    padded_features = []
+    for f in features:
+        padding = max_length - f.shape[2]
+        padded_f = torch.nn.functional.pad(f, (0, padding))  # 填充
+        padded_features.append(padded_f)
+    
+    # 将所有样本堆叠成一个批次
+    features_batch = torch.stack(padded_features, 0)
+    
+    # 将标签转换为张量，假设标签是整数，可以直接转换为长整型张量
+    labels_batch = torch.tensor(labels, dtype=torch.long)
+
+    return features_batch, labels_batch
+
+
 
 # 数据加载器示例
 dataset_dir = './dataset'  # 数据集路径
 dataset = CatSoundDataset(dataset_dir)
 
-# 创建数据加载器
-dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+# for features, label in dataset:
+#     print(features.shape, label)
+#     break
 
-# 示例：读取一个batch的数据
-for features, labels in dataloader:
-    print(features.shape, labels.shape)
-    break
+# 创建数据加载器
+dataloader = DataLoader(dataset, batch_size=32, shuffle=True, collate_fn=custom_collate_fn)
+
+for batch_idx, (features, labels) in enumerate(dataloader):
+    # 处理每个批次的 features 和 labels
+    print(f"Batch {batch_idx} - Features shape: {features.shape}, Labels shape: {labels.shape}")
 
 # def test_dataset():
 #     dataset = CatSoundDataset('./dataset')  # 使用您的数据集路径

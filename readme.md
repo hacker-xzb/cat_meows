@@ -18,7 +18,29 @@
 ### get_modulation_features(waveform, sample_rate):
 1. 一直报错，后来发现傅里叶变换会产生虚数，使得张量变化产生问题。
 2. 修改参数，使用幅度谱magnitude来避免对复数张量进行操作，而后对magnitude进行包络计算，进行带通滤波
+3. 通过一半注释定位到时bandpass_filter出现了问题
+```python
+filtered_waveform = torch.tensor(filtered_waveform.copy(), dtype=torch.float32)
+```
+- 通过添加copy，避免了负步长产生，解决错误
 
 ### if __name__ == '__main__':与terminal区别
 1. 如果直接运行python文件，则会执行if __name__ == '__main__'下的代码。
 2. 如果在终端中运行python文件，则会执行所有非函数和类的代码。
+
+### get_item
+1. 调试过程中不断print形状进行测试，最后调整张量成为合适的维度
+2. 保证时间维度相同，在torch.cat的时候
+3. 发现label不是张量，而是整数，而后转为长整型张量
+4. 后来发现需要每个批次的时间维度也要相同
+
+### dataloader
+1. 在调试过程中每次会输出很多批的shape，后来发现一次会处理32批
+2. collate_fn=custom_collate_fn 定义函数使得每个批次的时间维度相同
+
+### git命令
+1. git add -A 添加所有文件到暂存区
+2. git commit -m "提交信息" 提交到本地仓库
+3. git push 将本地仓库推送到远程仓库
+4. git status 查看当前仓库状态
+5. vscode操作以及desktop操作

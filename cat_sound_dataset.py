@@ -185,9 +185,19 @@ class CatSoundDataset(Dataset):
             mfcc_features = mfcc_features[:, :, :min_length]
             modulation_features = modulation_features[:, :, :min_length]
 
+        # 打印特征的形状以进行调试
+        print(f"MFCC shape: {mfcc_features.shape}")
+        print(f"Modulation features shape: {modulation_features.shape}")    
+
         # 合并特征
         features = torch.cat([mfcc_features, modulation_features], dim=1)
         # print(f"features: {features.shape}")
+
+        # 移出第一个维度
+        features = features.squeeze(0)
+
+        # # 转置特征，使得时间维度放到第一个维度
+        # features = features.transpose(0,1)
 
         # 获取标签
         label = self.get_label(self.files[idx])
@@ -206,14 +216,19 @@ class CatSoundDataset(Dataset):
 def custom_collate_fn(batch):
     features, labels = zip(*batch)
     
+    # 打印第一个样本的形状
+    print("Single feature shape:", features[0].shape)
+
     # 找到时间维度的最大长度
-    max_length = max([f.shape[2] for f in features])
+    max_length = max([f.shape[1] for f in features])
+    print("Max length:", max_length)
 
     # 填充每个特征到最大长度
     padded_features = []
     for f in features:
-        padding = max_length - f.shape[2]
-        padded_f = torch.nn.functional.pad(f, (0, padding))  # 填充
+        padding = max_length - f.shape[1]
+        padded_f = torch.nn.functional.pad(f, (0, padding))  # 只需要两个参数，填充时间维度
+        print(f"Before padding: {f.shape}, After padding: {padded_f.shape}")
         padded_features.append(padded_f)
     
     # 将所有样本堆叠成一个批次
@@ -240,13 +255,3 @@ dataloader = DataLoader(dataset, batch_size=32, shuffle=True, collate_fn=custom_
 for batch_idx, (features, labels) in enumerate(dataloader):
     # 处理每个批次的 features 和 labels
     print(f"Batch {batch_idx} - Features shape: {features.shape}, Labels shape: {labels.shape}")
-
-# def test_dataset():    
-#     dataset = CatSoundDataset('./dataset')  # 使用您的数据集路径
-#     for i in range(min(5, len(dataset))):  # 测试前5个样本或所有样本（如果少于5个）
-#         print(f"\nTesting sample {i}")
-#         features, label = dataset[i]
-#         print(f"Features shape: {features.shape}, Label: {label}")
-
-# if __name__ == "__main__":
-#     test_dataset()

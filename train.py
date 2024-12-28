@@ -68,11 +68,23 @@ def test(model, test_loader, criterion, device):
     
     return total_loss / len(test_loader), 100. * correct / total
 
+# 在训练循环前初始化历史记录
+history = {
+    'train_loss': [], 'train_acc': [],
+    'test_loss': [], 'test_acc': []
+}
+
 # 训练循环
 num_epochs = 50
 for epoch in range(num_epochs):
     train_loss, train_acc = train(model, train_loader, criterion, optimizer, device)
     test_loss, test_acc = test(model, test_loader, criterion, device)
+    
+    # 记录历史数据
+    history['train_loss'].append(train_loss)
+    history['train_acc'].append(train_acc)
+    history['test_loss'].append(test_loss)
+    history['test_acc'].append(test_acc)
     
     print(f'Epoch: {epoch+1}/{num_epochs}')
     print(f'Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%')
@@ -80,4 +92,9 @@ for epoch in range(num_epochs):
     print('--------------------')
 
 # 保存模型
-torch.save(model.state_dict(), 'cat_sound_classifier.pth') 
+torch.save(model.state_dict(), 'cat_sound_classifier.pth')
+
+# 保存训练历史
+import json
+with open('training_history.json', 'w') as f:
+    json.dump(history, f) 

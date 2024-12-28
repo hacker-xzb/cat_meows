@@ -1,8 +1,7 @@
-import os
-print(os.getcwd())
 import torch
 import torchaudio
 import librosa
+import os
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from torchaudio.transforms import MelSpectrogram, Resample

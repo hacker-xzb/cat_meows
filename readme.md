@@ -5,6 +5,9 @@
     torchaudio
     librosa
     numpy
+    matplotlib
+    seaborn
+    scikit-learn
 ```
 ### 原理
 核心是通过梅尔频率倒谱系数（MFCC）和时间调制特征来提取音频信号的特征，并将这两类特征结合在一起，用于音频分类。
